@@ -2,22 +2,29 @@ import { useState, useRef, useEffect } from 'react';
 
 export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
-  const [frequency, setFrequency] = useState(15625);
-  const [timer, setTimer] = useState(30);
   
-  // NUEVOS ESTADOS: Control de volúmenes individuales (0 a 100)
-  const [noiseVolume, setNoiseVolume] = useState(70);
-  const [oscVolume, setOscVolume] = useState(15);
+  // 1. Inicializamos los estados leyendo la memoria local (si existe) o usando el valor por defecto
+  const [frequency, setFrequency] = useState(() => Number(localStorage.getItem('tinnitus_freq')) || 15625);
+  const [timer, setTimer] = useState(() => Number(localStorage.getItem('tinnitus_timer')) || 30);
+  const [noiseVolume, setNoiseVolume] = useState(() => Number(localStorage.getItem('tinnitus_noise')) || 70);
+  const [oscVolume, setOscVolume] = useState(() => Number(localStorage.getItem('tinnitus_osc')) || 15);
 
   const audioCtxRef = useRef(null);
   const oscRef = useRef(null);
   const noiseRef = useRef(null);
   const mainGainRef = useRef(null);
   
-  // Referencias para los controles de volumen en tiempo real
   const noiseGainRef = useRef(null);
   const oscGainRef = useRef(null);
   const timerTimeoutRef = useRef(null);
+
+  // 2. NUEVO: Cada vez que cambian los valores, los guardamos en la memoria del navegador
+  useEffect(() => {
+    localStorage.setItem('tinnitus_freq', frequency);
+    localStorage.setItem('tinnitus_timer', timer);
+    localStorage.setItem('tinnitus_noise', noiseVolume);
+    localStorage.setItem('tinnitus_osc', oscVolume);
+  }, [frequency, timer, noiseVolume, oscVolume]);
 
   const createBrownNoise = (ctx) => {
     const bufferSize = 2 * ctx.sampleRate;
@@ -50,20 +57,18 @@ export default function App() {
     mainGainRef.current = ctx.createGain();
     mainGainRef.current.connect(ctx.destination);
 
-    // 1. Oscilador Agudo (El Pitido)
     oscRef.current = ctx.createOscillator();
     oscRef.current.frequency.value = frequency;
     
     oscGainRef.current = ctx.createGain();
-    oscGainRef.current.gain.value = oscVolume / 1000; // Dividido por 1000 porque los agudos perforan mucho
+    oscGainRef.current.gain.value = oscVolume / 1000;
     oscRef.current.connect(oscGainRef.current).connect(mainGainRef.current);
 
-    // 2. Ruido Marrón (El Colchón relajante) con filtro
     noiseRef.current = createBrownNoise(ctx);
     
     const lowPassFilter = ctx.createBiquadFilter();
     lowPassFilter.type = 'lowpass';
-    lowPassFilter.frequency.value = 600; // Corta la "estática molesta"
+    lowPassFilter.frequency.value = 600; 
     
     noiseGainRef.current = ctx.createGain();
     noiseGainRef.current.gain.value = noiseVolume / 100;
@@ -80,7 +85,6 @@ export default function App() {
     }, timer * 60000);
   };
 
-  // Efectos para actualizar volúmenes y frecuencia en tiempo real
   useEffect(() => {
     if (oscRef.current && isPlaying && audioCtxRef.current) {
       oscRef.current.frequency.exponentialRampToValueAtTime(frequency, audioCtxRef.current.currentTime + 0.1);
@@ -100,9 +104,8 @@ export default function App() {
   }, [oscVolume, isPlaying]);
 
   return (
-    <div style={{ backgroundColor: '#0f2a24ff', color: 'white', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'sans-serif' }}>
-      <h2 style={{ marginBottom: '10px', color: 'white'
-      }}>Alivio Tinnitus</h2>
+    <div style={{ backgroundColor: '#0f172a', color: 'white', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'sans-serif' }}>
+      <h2 style={{ marginBottom: '10px', color: 'white' }}>Alivio Tinnitus</h2>
       
       <button 
         onClick={isPlaying ? stopAudio : startAudio}
@@ -113,7 +116,6 @@ export default function App() {
 
       <div style={{ width: '100%', maxWidth: '320px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
         
-        {/* Mezclador */}
         <div style={{ backgroundColor: '#1e293b', padding: '15px', borderRadius: '10px' }}>
           <p style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#94a3b8' }}>Volumen del Fondo: {noiseVolume}%</p>
           <input type="range" min="0" max="100" value={noiseVolume} onChange={(e) => setNoiseVolume(Number(e.target.value))} style={{ width: '100%' }} />
@@ -122,7 +124,6 @@ export default function App() {
           <input type="range" min="0" max="100" value={oscVolume} onChange={(e) => setOscVolume(Number(e.target.value))} style={{ width: '100%' }} />
         </div>
 
-        {/* Frecuencia y Timer */}
         <div style={{ backgroundColor: '#1e293b', padding: '15px', borderRadius: '10px' }}>
           <p style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#94a3b8' }}>Frecuencia (Pitch): {frequency} Hz</p>
           <input type="range" min="10000" max="17000" value={frequency} onChange={(e) => setFrequency(Number(e.target.value))} style={{ width: '100%' }} />
