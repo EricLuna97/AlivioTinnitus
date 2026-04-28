@@ -2,13 +2,21 @@ import { useState, useRef, useEffect } from 'react';
 
 export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
-  const [frequency, setFrequency] = useState(15625); // Frecuencia TV CRT
-  const [timer, setTimer] = useState(30); // Minutos por defecto
+  const [frequency, setFrequency] = useState(15625);
+  const [timer, setTimer] = useState(30);
   
+  // NUEVOS ESTADOS: Control de volúmenes individuales (0 a 100)
+  const [noiseVolume, setNoiseVolume] = useState(70);
+  const [oscVolume, setOscVolume] = useState(15);
+
   const audioCtxRef = useRef(null);
   const oscRef = useRef(null);
   const noiseRef = useRef(null);
   const mainGainRef = useRef(null);
+  
+  // Referencias para los controles de volumen en tiempo real
+  const noiseGainRef = useRef(null);
+  const oscGainRef = useRef(null);
   const timerTimeoutRef = useRef(null);
 
   const createBrownNoise = (ctx) => {
@@ -36,64 +44,93 @@ export default function App() {
   };
 
   const startAudio = () => {
-    if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
     const ctx = audioCtxRef.current;
 
     mainGainRef.current = ctx.createGain();
     mainGainRef.current.connect(ctx.destination);
 
-    // Oscilador Agudo (Low Gain para no lastimar)
+    // 1. Oscilador Agudo (El Pitido)
     oscRef.current = ctx.createOscillator();
     oscRef.current.frequency.value = frequency;
-    const oscGain = ctx.createGain();
-    oscGain.gain.value = 0.03; 
-    oscRef.current.connect(oscGain).connect(mainGainRef.current);
+    
+    oscGainRef.current = ctx.createGain();
+    oscGainRef.current.gain.value = oscVolume / 1000; // Dividido por 1000 porque los agudos perforan mucho
+    oscRef.current.connect(oscGainRef.current).connect(mainGainRef.current);
 
-    // Ruido Marrón (Base relajante)
+    // 2. Ruido Marrón (El Colchón relajante) con filtro
     noiseRef.current = createBrownNoise(ctx);
-    const noiseGain = ctx.createGain();
-    noiseGain.gain.value = 0.7;
-    noiseRef.current.connect(noiseGain).connect(mainGainRef.current);
+    
+    const lowPassFilter = ctx.createBiquadFilter();
+    lowPassFilter.type = 'lowpass';
+    lowPassFilter.frequency.value = 600; // Corta la "estática molesta"
+    
+    noiseGainRef.current = ctx.createGain();
+    noiseGainRef.current.gain.value = noiseVolume / 100;
+    
+    noiseRef.current.connect(lowPassFilter).connect(noiseGainRef.current).connect(mainGainRef.current);
 
     oscRef.current.start();
     noiseRef.current.start();
     setIsPlaying(true);
 
-    // Configurar Timer
     timerTimeoutRef.current = setTimeout(() => {
-      // Fade out de 5 segundos antes de apagar
       mainGainRef.current.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 5);
       setTimeout(stopAudio, 5000);
     }, timer * 60000);
   };
 
+  // Efectos para actualizar volúmenes y frecuencia en tiempo real
   useEffect(() => {
     if (oscRef.current && isPlaying && audioCtxRef.current) {
-      // Usamos exponentialRampToValueAtTime para que el cambio de pitch sea suave y no haga "clics"
-      oscRef.current.frequency.exponentialRampToValueAtTime(
-        frequency, 
-        audioCtxRef.current.currentTime + 0.1
-      );
+      oscRef.current.frequency.exponentialRampToValueAtTime(frequency, audioCtxRef.current.currentTime + 0.1);
     }
   }, [frequency, isPlaying]);
-  
+
+  useEffect(() => {
+    if (noiseGainRef.current && isPlaying && audioCtxRef.current) {
+      noiseGainRef.current.gain.setTargetAtTime(noiseVolume / 100, audioCtxRef.current.currentTime, 0.1);
+    }
+  }, [noiseVolume, isPlaying]);
+
+  useEffect(() => {
+    if (oscGainRef.current && isPlaying && audioCtxRef.current) {
+      oscGainRef.current.gain.setTargetAtTime(oscVolume / 1000, audioCtxRef.current.currentTime, 0.1);
+    }
+  }, [oscVolume, isPlaying]);
+
   return (
-    <div style={{ backgroundColor: '#0f172a', color: 'white', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', textAlign: 'center', fontFamily: 'sans-serif' }}>
-      <h1>Alivio Tinnitus</h1>
+    <div style={{ backgroundColor: '#0f2a24ff', color: 'white', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'sans-serif' }}>
+      <h2 style={{ marginBottom: '10px', color: 'white'
+      }}>Alivio Tinnitus</h2>
       
       <button 
         onClick={isPlaying ? stopAudio : startAudio}
-        style={{ width: '180px', height: '180px', borderRadius: '50%', border: 'none', backgroundColor: isPlaying ? '#ef4444' : '#22c55e', color: 'white', fontSize: '20px', fontWeight: 'bold', margin: '30px 0', cursor: 'pointer' }}
+        style={{ width: '150px', height: '150px', borderRadius: '50%', border: 'none', backgroundColor: isPlaying ? '#ef4444' : '#22c55e', color: 'white', fontSize: '18px', fontWeight: 'bold', margin: '20px 0', cursor: 'pointer' }}
       >
         {isPlaying ? 'PAUSAR' : 'REPRODUCIR'}
       </button>
 
-      <div style={{ width: '100%', maxWidth: '300px' }}>
-        <p>Frecuencia: {frequency} Hz</p>
-        <input type="range" min="12000" max="17000" value={frequency} onChange={(e) => setFrequency(Number(e.target.value))} style={{ width: '100%' }} />
+      <div style={{ width: '100%', maxWidth: '320px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
         
-        <p style={{ marginTop: '20px' }}>Temporizador: {timer} min</p>
-        <input type="range" min="5" max="120" step="5" value={timer} onChange={(e) => setTimer(Number(e.target.value))} style={{ width: '100%' }} />
+        {/* Mezclador */}
+        <div style={{ backgroundColor: '#1e293b', padding: '15px', borderRadius: '10px' }}>
+          <p style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#94a3b8' }}>Volumen del Fondo: {noiseVolume}%</p>
+          <input type="range" min="0" max="100" value={noiseVolume} onChange={(e) => setNoiseVolume(Number(e.target.value))} style={{ width: '100%' }} />
+          
+          <p style={{ margin: '15px 0 10px 0', fontSize: '14px', color: '#94a3b8' }}>Volumen del Pitido: {oscVolume}%</p>
+          <input type="range" min="0" max="100" value={oscVolume} onChange={(e) => setOscVolume(Number(e.target.value))} style={{ width: '100%' }} />
+        </div>
+
+        {/* Frecuencia y Timer */}
+        <div style={{ backgroundColor: '#1e293b', padding: '15px', borderRadius: '10px' }}>
+          <p style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#94a3b8' }}>Frecuencia (Pitch): {frequency} Hz</p>
+          <input type="range" min="10000" max="17000" value={frequency} onChange={(e) => setFrequency(Number(e.target.value))} style={{ width: '100%' }} />
+          
+          <p style={{ margin: '15px 0 10px 0', fontSize: '14px', color: '#94a3b8' }}>Temporizador: {timer} min</p>
+          <input type="range" min="5" max="120" step="5" value={timer} onChange={(e) => setTimer(Number(e.target.value))} style={{ width: '100%' }} />
+        </div>
+
       </div>
     </div>
   );
