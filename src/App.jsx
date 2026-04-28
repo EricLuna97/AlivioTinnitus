@@ -67,6 +67,16 @@ export default function App() {
     }, timer * 60000);
   };
 
+  useEffect(() => {
+    if (oscRef.current && isPlaying && audioCtxRef.current) {
+      // Usamos exponentialRampToValueAtTime para que el cambio de pitch sea suave y no haga "clics"
+      oscRef.current.frequency.exponentialRampToValueAtTime(
+        frequency, 
+        audioCtxRef.current.currentTime + 0.1
+      );
+    }
+  }, [frequency, isPlaying]);
+  
   return (
     <div style={{ backgroundColor: '#0f172a', color: 'white', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', textAlign: 'center', fontFamily: 'sans-serif' }}>
       <h1>Alivio Tinnitus</h1>
