@@ -221,15 +221,15 @@ export default function App() {
             <p style={{ margin: '25px 0 12px 0', fontSize: '15px', fontWeight: '500' }}>Ruido Rosa</p>
             <input type="range" min="0" max="100" value={pinkVolume} onChange={(e) => setPinkVolume(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
             
-            <p style={{ margin: '25px 0 12px 0', fontSize: '15px', fontWeight: '500' }}>Ruido Rojo (Marrón)</p>
+            <p style={{ margin: '25px 0 12px 0', fontSize: '15px', fontWeight: '500' }}>Ruido Rojo</p>
             <input type="range" min="0" max="100" value={brownVolume} onChange={(e) => setBrownVolume(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
           </div>
 
           <div style={{ backgroundColor: '#1e293b', padding: '20px', borderRadius: '12px' }}>
-            <p style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: '500' }}>Tonal (Volumen)</p>
+            <p style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: '500' }}>Oscilador</p>
             <input type="range" min="0" max="100" value={oscVolume} onChange={(e) => setOscVolume(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
             
-            <p style={{ margin: '25px 0 12px 0', fontSize: '15px', fontWeight: '500' }}>Frecuencia (Pitch): {frequency} Hz</p>
+            <p style={{ margin: '25px 0 12px 0', fontSize: '15px', fontWeight: '500' }}>Frecuencia: {frequency} Hz</p>
             <input type="range" min="8000" max="17000" value={frequency} onChange={(e) => setFrequency(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
           </div>
 
