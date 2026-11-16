@@ -1,28 +1,21 @@
 export default function Footer() {
   return (
-    <footer style={{
-      marginTop: 'auto',
-      padding: '30px 20px 15px',
-      width: '100%',
-      maxWidth: '340px',
-      textAlign: 'center',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '10px',
-      borderTop: '1px solid #1e293b',
-      color: '#64748b',
-      fontSize: '12px',
-    }}>
-      <p style={{ margin: 0, fontWeight: '500', color: '#94a3b8' }}>
-        Alivio Tinnitus
-      </p>
+    <footer className="app-footer">
+      <div className="footer-disclaimer-card">
+        <div className="footer-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="16" x2="12" y2="12" />
+            <line x1="12" y1="8" x2="12.01" y2="8" />
+          </svg>
+        </div>
+        <p className="footer-disclaimer-text">
+          Herramienta utilitaria de generación acústica en tiempo real para el enmascaramiento de frecuencias. No reemplaza el diagnóstico o tratamiento médico profesional.
+        </p>
+      </div>
       
-      <p style={{ margin: 0, fontSize: '11px', color: '#475569', lineHeight: '1.5' }}>
-        Herramienta utilitaria de generación acústica en tiempo real para el enmascaramiento de frecuencias. No reemplaza el diagnóstico o tratamiento médico profesional.
-      </p>
-      
-      <p style={{ margin: '8px 0 0 0', fontWeight: '600' }}>
-        Desarrollado por Eric Luna
+      <p className="footer-author">
+        Desarrollado por <span className="author-name">Eric Luna</span>
       </p>
     </footer>
   );

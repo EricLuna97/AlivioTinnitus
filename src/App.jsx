@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import Footer from './Footer';
+import './App.css';
 
 export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -9,8 +10,6 @@ export default function App() {
   const [whiteVolume, setWhiteVolume] = useState(() => Number(localStorage.getItem('tinnitus_white')) || 0);
   const [pinkVolume, setPinkVolume] = useState(() => Number(localStorage.getItem('tinnitus_pink')) || 0);
   const [brownVolume, setBrownVolume] = useState(() => Number(localStorage.getItem('tinnitus_brown')) || 50);
-  const [oscVolume, setOscVolume] = useState(() => Number(localStorage.getItem('tinnitus_osc')) || 0);
-  const [frequency, setFrequency] = useState(() => Number(localStorage.getItem('tinnitus_freq')) || 15000);
   const [timer, setTimer] = useState(() => Number(localStorage.getItem('tinnitus_timer')) || 30);
 
   // Referencias de la Web Audio API
@@ -20,8 +19,6 @@ export default function App() {
   const whiteGainRef = useRef(null);
   const pinkGainRef = useRef(null);
   const brownGainRef = useRef(null);
-  const oscGainRef = useRef(null);
-  const oscRef = useRef(null);
 
   const whiteSourceRef = useRef(null);
   const pinkSourceRef = useRef(null);
@@ -34,22 +31,18 @@ export default function App() {
     localStorage.setItem('tinnitus_white', whiteVolume);
     localStorage.setItem('tinnitus_pink', pinkVolume);
     localStorage.setItem('tinnitus_brown', brownVolume);
-    localStorage.setItem('tinnitus_osc', oscVolume);
-    localStorage.setItem('tinnitus_freq', frequency);
     localStorage.setItem('tinnitus_timer', timer);
-  }, [whiteVolume, pinkVolume, brownVolume, oscVolume, frequency, timer]);
+  }, [whiteVolume, pinkVolume, brownVolume, timer]);
 
   // Lógica del contador de sesión a prueba de modo suspensión
   useEffect(() => {
     let interval;
 
     if (isPlaying) {
-      // Como siempre arrancamos de cero, solo guardamos la hora de inicio
       const tiempoInicio = Date.now();
       
       interval = setInterval(() => {
         const tiempoActual = Date.now();
-        // Calculamos la diferencia exacta sin depender de la variable de estado previa
         setSegundosReproduccion(Math.floor((tiempoActual - tiempoInicio) / 1000));
       }, 1000);
     } else {
@@ -112,10 +105,18 @@ export default function App() {
   };
 
   const stopAudio = () => {
-    if (oscRef.current) oscRef.current.stop();
-    if (whiteSourceRef.current) whiteSourceRef.current.stop();
-    if (pinkSourceRef.current) pinkSourceRef.current.stop();
-    if (brownSourceRef.current) brownSourceRef.current.stop();
+    if (whiteSourceRef.current) {
+      whiteSourceRef.current.stop();
+      whiteSourceRef.current = null;
+    }
+    if (pinkSourceRef.current) {
+      pinkSourceRef.current.stop();
+      pinkSourceRef.current = null;
+    }
+    if (brownSourceRef.current) {
+      brownSourceRef.current.stop();
+      brownSourceRef.current = null;
+    }
     
     setIsPlaying(false);
     if (timerTimeoutRef.current) clearTimeout(timerTimeoutRef.current);
@@ -124,6 +125,11 @@ export default function App() {
   const startAudio = () => {
     if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
     const ctx = audioCtxRef.current;
+
+    // Si el contexto está suspendido (política autoplay del navegador), lo reactivamos
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
 
     masterGainRef.current = ctx.createGain();
     masterGainRef.current.connect(ctx.destination);
@@ -146,7 +152,7 @@ export default function App() {
     pinkGainRef.current.gain.value = pinkVolume / 100;
     pinkSourceRef.current.connect(pinkFilter).connect(pinkGainRef.current).connect(masterGainRef.current);
 
-    // Canal: Ruido Marrón (Con filtro para suavizarlo)
+    // Canal: Ruido Rojo / Marrón (Con filtro para suavizarlo)
     brownSourceRef.current = createNoise(ctx, 'brown');
     const brownFilter = ctx.createBiquadFilter();
     brownFilter.type = 'lowpass';
@@ -155,25 +161,19 @@ export default function App() {
     brownGainRef.current.gain.value = brownVolume / 100;
     brownSourceRef.current.connect(brownFilter).connect(brownGainRef.current).connect(masterGainRef.current);
 
-    // Canal: Tonal Puro
-    oscRef.current = ctx.createOscillator();
-    oscRef.current.frequency.value = frequency;
-    oscGainRef.current = ctx.createGain();
-    oscGainRef.current.gain.value = oscVolume / 1000;
-    oscRef.current.connect(oscGainRef.current).connect(masterGainRef.current);
-
-    // Arrancamos el mezclador maestro
+    // Arrancamos las fuentes de ruido
     whiteSourceRef.current.start();
     pinkSourceRef.current.start();
     brownSourceRef.current.start();
-    oscRef.current.start();
     
-    setSegundosReproduccion(0); // Reinicia el contador de sesión
+    setSegundosReproduccion(0);
     setIsPlaying(true);
 
     // Temporizador con Fade Out de 5 segundos
     timerTimeoutRef.current = setTimeout(() => {
-      masterGainRef.current.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 5);
+      if (masterGainRef.current && audioCtxRef.current) {
+        masterGainRef.current.gain.exponentialRampToValueAtTime(0.01, audioCtxRef.current.currentTime + 5);
+      }
       setTimeout(stopAudio, 5000);
     }, timer * 60000);
   };
@@ -197,98 +197,225 @@ export default function App() {
     }
   }, [brownVolume, isPlaying]);
 
-  useEffect(() => {
-    if (oscGainRef.current && isPlaying && audioCtxRef.current) {
-      oscGainRef.current.gain.setTargetAtTime(oscVolume / 1000, audioCtxRef.current.currentTime, 0.1);
-    }
-  }, [oscVolume, isPlaying]);
-
-  useEffect(() => {
-    if (oscRef.current && isPlaying && audioCtxRef.current) {
-      oscRef.current.frequency.setTargetAtTime(frequency, audioCtxRef.current.currentTime, 0.1);
-    }
-  }, [frequency, isPlaying]);
+  const timerPresets = [15, 30, 45, 60];
 
   return (
-    <>
-      <style>
-        {`
-          @keyframes pulse {
-            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.4); }
-            70% { transform: scale(1.03); box-shadow: 0 0 0 20px rgba(45, 212, 191, 0); }
-            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(45, 212, 191, 0); }
-          }
-          input[type=range] {
-            accent-color: #94a3b8;
-          }
-        `}
-      </style>
-      
-      <div style={{ backgroundColor: '#0f172a', color: '#e2e8f0', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '30px 20px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div className="app-wrapper">
+      <div className="app-container">
         
-        <h1 style={{ margin: '0 0 30px 0', fontSize: '26px', fontWeight: '600', color: '#f8fafc' }}>Alivio Tinnitus</h1>
-        
-        <button 
-          onClick={isPlaying ? stopAudio : startAudio}
-          style={{ 
-            width: '160px', 
-            height: '160px', 
-            borderRadius: '50%', 
-            border: 'none', 
-            backgroundColor: isPlaying ? '#0f766e' : '#2dd4bf', 
-            color: isPlaying ? '#ccfbf1' : '#042f2e', 
-            fontSize: '16px', 
-            fontWeight: 'bold', 
-            marginBottom: '10px', 
-            cursor: 'pointer',
-            transition: 'background-color 0.3s, transform 0.2s',
-            animation: isPlaying ? 'pulse 2.5s infinite' : 'none'
-          }}
-        >
-          {isPlaying ? 'REPRODUCIENDO...' : 'REPRODUCIR'}
-        </button>
+        {/* Encabezado */}
+        <header className="app-header">
+          <div className="brand-badge">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 10v4" />
+              <path d="M6 7v10" />
+              <path d="M10 4v16" />
+              <path d="M14 7v10" />
+              <path d="M18 10v4" />
+            </svg>
+            Terapia Acústica
+          </div>
+          <h1 className="app-title">Alivio Tinnitus</h1>
+          <p className="app-subtitle">Enmascaramiento auditivo continuo</p>
+        </header>
 
-        {/* Indicador de tiempo de sesión */}
-        <div style={{
-          fontSize: '14px',
-          color: '#94a3b8',
-          fontFamily: 'monospace',
-          textAlign: 'center',
-          marginBottom: '40px',
-          height: '20px' // Mantiene la estructura para que no salte el layout
-        }}>
-          {isPlaying ? `Tiempo de sesión: ${formatearTiempo(segundosReproduccion)}` : "Esperando iniciar..."}
+        {/* Reproductor Central */}
+        <section className="hero-player-section">
+          <div className="play-button-outer">
+            {isPlaying && (
+              <>
+                <div className="pulse-ring pulse-ring-1" />
+                <div className="pulse-ring pulse-ring-2" />
+              </>
+            )}
+
+            <button 
+              onClick={isPlaying ? stopAudio : startAudio}
+              className={`main-play-btn ${isPlaying ? 'active' : 'idle'}`}
+              aria-label={isPlaying ? 'Detener reproducción' : 'Iniciar reproducción'}
+            >
+              <div className="btn-icon">
+                {isPlaying ? (
+                  <div className="audio-wave-bars">
+                    <span className="wave-bar" />
+                    <span className="wave-bar" />
+                    <span className="wave-bar" />
+                    <span className="wave-bar" />
+                    <span className="wave-bar" />
+                  </div>
+                ) : (
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: '3px' }}>
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                )}
+              </div>
+              <span className="btn-label">
+                {isPlaying ? 'REPRODUCIENDO...' : 'REPRODUCIR'}
+              </span>
+            </button>
+          </div>
+
+          {/* Indicador de tiempo de sesión */}
+          <div className="session-status-pill">
+            <span className={`status-dot ${isPlaying ? 'active' : ''}`} />
+            <span>
+              {isPlaying ? `Tiempo de sesión: ${formatearTiempo(segundosReproduccion)}` : 'Esperando iniciar...'}
+            </span>
+          </div>
+        </section>
+
+        {/* Tarjeta: Temporizador */}
+        <div className="glass-card">
+          <div className="card-header-row">
+            <div className="card-title-group">
+              <span className="card-icon">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              </span>
+              <h2 className="card-title">Temporizador</h2>
+            </div>
+            <span className="card-value-badge">{timer} min</span>
+          </div>
+
+          <div className="slider-container">
+            <input 
+              type="range" 
+              min="5" 
+              max="120" 
+              step="5" 
+              value={timer} 
+              onChange={(e) => setTimer(Number(e.target.value))}
+              className="custom-range"
+              style={{
+                background: `linear-gradient(to right, #2dd4bf ${((timer - 5) / (120 - 5)) * 100}%, rgba(255, 255, 255, 0.1) ${((timer - 5) / (120 - 5)) * 100}%)`
+              }}
+              aria-label="Minutos de temporizador"
+            />
+          </div>
+
+          <div className="preset-chips-row">
+            {timerPresets.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                className={`preset-chip ${timer === preset ? 'selected' : ''}`}
+                onClick={() => setTimer(preset)}
+              >
+                {preset}m
+              </button>
+            ))}
+          </div>
+
+          <p className="timer-footnote">Desvanecimiento gradual suave de 5s al finalizar</p>
         </div>
 
-        <div style={{ width: '100%', maxWidth: '340px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          <div style={{ backgroundColor: '#1e293b', padding: '20px', borderRadius: '12px' }}>
-            <p style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: '500' }}>Temporizador: {timer} min</p>
-            <input type="range" min="5" max="120" step="5" value={timer} onChange={(e) => setTimer(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
+        {/* Tarjeta: Mezclador de Ruido */}
+        <div className="glass-card">
+          <div className="card-header-row">
+            <div className="card-title-group">
+              <span className="card-icon">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="4" y1="21" x2="4" y2="14" />
+                  <line x1="4" y1="10" x2="4" y2="3" />
+                  <line x1="12" y1="21" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12" y2="3" />
+                  <line x1="20" y1="21" x2="20" y2="16" />
+                  <line x1="20" y1="12" x2="20" y2="3" />
+                  <line x1="1" y1="14" x2="7" y2="14" />
+                  <line x1="9" y1="8" x2="15" y2="8" />
+                  <line x1="17" y1="16" x2="23" y2="16" />
+                </svg>
+              </span>
+              <h2 className="card-title">Mezclador de Ruido</h2>
+            </div>
           </div>
 
-          <div style={{ backgroundColor: '#1e293b', padding: '20px', borderRadius: '12px' }}>
-            <p style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: '500' }}>Ruido Blanco</p>
-            <input type="range" min="0" max="100" value={whiteVolume} onChange={(e) => setWhiteVolume(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
-            
-            <p style={{ margin: '25px 0 12px 0', fontSize: '15px', fontWeight: '500' }}>Ruido Rosa</p>
-            <input type="range" min="0" max="100" value={pinkVolume} onChange={(e) => setPinkVolume(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
-            
-            <p style={{ margin: '25px 0 12px 0', fontSize: '15px', fontWeight: '500' }}>Ruido Rojo</p>
-            <input type="range" min="0" max="100" value={brownVolume} onChange={(e) => setBrownVolume(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
+          {/* Ruido Blanco */}
+          <div className="noise-channel-strip">
+            <div className="noise-info-row">
+              <div className="noise-name-tag">
+                <span className="noise-color-indicator" style={{ backgroundColor: '#38bdf8', boxShadow: '0 0 8px rgba(56, 189, 248, 0.5)' }} />
+                <span className="noise-label">Ruido Blanco</span>
+              </div>
+              <span className="noise-volume-badge">{whiteVolume}%</span>
+            </div>
+            <span className="noise-desc">Frecuencias altas · Enmascaramiento nítido</span>
+            <div className="slider-container">
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                value={whiteVolume} 
+                onChange={(e) => setWhiteVolume(Number(e.target.value))}
+                className="custom-range"
+                style={{
+                  background: `linear-gradient(to right, #38bdf8 ${whiteVolume}%, rgba(255, 255, 255, 0.1) ${whiteVolume}%)`
+                }}
+                aria-label="Volumen Ruido Blanco"
+              />
+            </div>
           </div>
 
-          <div style={{ backgroundColor: '#1e293b', padding: '20px', borderRadius: '12px' }}>
-            <p style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: '500' }}>Oscilador</p>
-            <input type="range" min="0" max="100" value={oscVolume} onChange={(e) => setOscVolume(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
-            
-            <p style={{ margin: '25px 0 12px 0', fontSize: '15px', fontWeight: '500' }}>Frecuencia: {frequency} Hz</p>
-            <input type="range" min="8000" max="17000" value={frequency} onChange={(e) => setFrequency(Number(e.target.value))} style={{ width: '100%', cursor: 'pointer' }} />
+          {/* Ruido Rosa */}
+          <div className="noise-channel-strip">
+            <div className="noise-info-row">
+              <div className="noise-name-tag">
+                <span className="noise-color-indicator" style={{ backgroundColor: '#f472b6', boxShadow: '0 0 8px rgba(244, 114, 182, 0.5)' }} />
+                <span className="noise-label">Ruido Rosa</span>
+              </div>
+              <span className="noise-volume-badge">{pinkVolume}%</span>
+            </div>
+            <span className="noise-desc">Espectro natural 1/f · Suave y equilibrado</span>
+            <div className="slider-container">
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                value={pinkVolume} 
+                onChange={(e) => setPinkVolume(Number(e.target.value))}
+                className="custom-range"
+                style={{
+                  background: `linear-gradient(to right, #f472b6 ${pinkVolume}%, rgba(255, 255, 255, 0.1) ${pinkVolume}%)`
+                }}
+                aria-label="Volumen Ruido Rosa"
+              />
+            </div>
+          </div>
+
+          {/* Ruido Rojo */}
+          <div className="noise-channel-strip">
+            <div className="noise-info-row">
+              <div className="noise-name-tag">
+                <span className="noise-color-indicator" style={{ backgroundColor: '#fb923c', boxShadow: '0 0 8px rgba(251, 146, 60, 0.5)' }} />
+                <span className="noise-label">Ruido Rojo</span>
+              </div>
+              <span className="noise-volume-badge">{brownVolume}%</span>
+            </div>
+            <span className="noise-desc">Graves profundos · Relajante y envolvente</span>
+            <div className="slider-container">
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                value={brownVolume} 
+                onChange={(e) => setBrownVolume(Number(e.target.value))}
+                className="custom-range"
+                style={{
+                  background: `linear-gradient(to right, #fb923c ${brownVolume}%, rgba(255, 255, 255, 0.1) ${brownVolume}%)`
+                }}
+                aria-label="Volumen Ruido Rojo"
+              />
+            </div>
           </div>
 
         </div>
+
+        {/* Pie de página con descargo médico y autor */}
         <Footer />
+
       </div>
-    </>
+    </div>
   );
-} 
+}
